@@ -1,0 +1,18 @@
+[
+  {
+    "name": "web-extractor",
+    "path": "../mcp-server/dist/index.js",
+    "args": [],
+    "requestOptions": {
+      "timeout": 60000
+    }
+  },
+  {
+    "name": "filesystem",
+    "path": "../mcp-server/node_modules/@modelcontextprotocol/server-filesystem/dist/index.js",
+    "args": ["/tmp"],
+    "requestOptions": {
+      "timeout": 120000
+    }
+  }
+]

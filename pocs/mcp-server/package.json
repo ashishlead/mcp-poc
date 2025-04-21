@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.10.1",
+    "@modelcontextprotocol/server-filesystem": "^2025.3.28",
     "cheerio": "^1.0.0"
   },
   "devDependencies": {

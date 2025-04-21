@@ -2,6 +2,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { extractWebContent } from './web-extractor.js';
+import { createServer } from "@modelcontextprotocol/create-server";
+import { handleFilesystemTool, filesystemToolSchema } from "@modelcontextprotocol/server-filesystem";
 
 // Create MCP server
 const server = new McpServer({
@@ -29,6 +31,13 @@ server.tool(
       };
     }
   }
+);
+
+// Register the filesystem tool
+server.tool(
+  "filesystem",
+  filesystemToolSchema,
+  handleFilesystemTool
 );
 
 // Start the server with stdio transport
