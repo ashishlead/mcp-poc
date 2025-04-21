@@ -1,9 +1,11 @@
-// anthropic sdk
-import { Anthropic } from "@anthropic-ai/sdk";
-import {
-  MessageParam,
-  Tool,
-} from "@anthropic-ai/sdk/resources/messages/messages.mjs";
+// openai sdk
+import OpenAI from "openai";
+// import { Anthropic } from "@anthropic-ai/sdk";
+// import {
+//   MessageParam,
+//   Tool,
+// } from "@anthropic-ai/sdk/resources/messages/messages.mjs";
+import { Tool } from "@anthropic-ai/sdk/resources/messages/messages.mjs"; // Only for type compatibility, remove if not needed
 
 // mcp sdk
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -14,20 +16,20 @@ import readline from "readline/promises";
 
 dotenv.config();
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-if (!ANTHROPIC_API_KEY) {
-  throw new Error("ANTHROPIC_API_KEY is not set");
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+if (!OPENAI_API_KEY) {
+  throw new Error("OPENAI_API_KEY is not set");
 }
 
 class MCPClient {
-  private mcp: Client;
-  private llm: Anthropic;
+  public mcp: Client;
+  private llm: OpenAI;
   private transport: StdioClientTransport | null = null;
   private tools: Tool[] = [];
 
   constructor() {
-    this.llm = new Anthropic({
-      apiKey: ANTHROPIC_API_KEY,
+    this.llm = new OpenAI({
+      apiKey: OPENAI_API_KEY,
     });
     this.mcp = new Client({ name: "mcp-client-cli", version: "1.0.0" });
   }
@@ -69,59 +71,26 @@ class MCPClient {
 
   // Process query
   async processQuery(query: string) {
-    // call th llm
-    const messages: MessageParam[] = [
+    // Inline type for OpenAI chat messages
+    const messages: Array<{ role: "user" | "assistant" | "system"; content: string }> = [
       {
         role: "user",
         content: query,
       },
     ];
 
-    const response = await this.llm.messages.create({
-      model: "claude-3-5-sonnet-20241022",
+    const response = await this.llm.chat.completions.create({
+      model: "gpt-4o", // or another OpenAI model
       max_tokens: 1000,
       messages,
-      tools: this.tools,
+      // tools: this.tools, // OpenAI tool calling would need to be adapted
     });
 
-    // check the response
+    // For simplicity, just return the response text
     const finalText = [];
-    const toolResults = [];
-
-    // if text -> return response
-    for (const content of response.content) {
-      if (content.type === "text") {
-        finalText.push(content.text);
-      } else if (content.type === "tool_use") {
-        // if tool -> call the tool on mcp server
-        const toolName = content.name;
-        const toolArgs = content.input as { [x: string]: unknown } | undefined;
-
-        const result = await this.mcp.callTool({
-          name: toolName,
-          arguments: toolArgs,
-        });
-        toolResults.push(result);
-        finalText.push(
-          `[Calling tool ${toolName} with args ${JSON.stringify(toolArgs)}]`
-        );
-        messages.push({
-          role: "user",
-          content: result.content as string,
-        });
-
-        const response = await this.llm.messages.create({
-          model: "claude-3-5-sonnet-20241022",
-          max_tokens: 1000,
-          messages,
-        });
-
-        finalText.push(
-          response.content[0].type === "text" ? response.content[0].text : ""
-        );
-      }
+    if (response.choices && response.choices.length > 0) {
+      finalText.push(response.choices[0].message.content);
     }
-
     return finalText.join("\n");
   }
 
@@ -153,7 +122,6 @@ class MCPClient {
   }
 }
 
-
 async function main() {
   if (process.argv.length < 3) {
     console.log("Usage: node index.ts <path_to_server_script>");
@@ -162,6 +130,21 @@ async function main() {
   const mcpClient = new MCPClient();
   try {
     await mcpClient.connectToServer(process.argv[2]);
+
+    // --- DEMO: Call extract_content tool from server ---
+    const demoUrl = "https://example.com";
+    console.log(`\n[Demo] Calling extract_content tool with url: ${demoUrl}`);
+    try {
+      const result = await mcpClient.mcp.callTool({
+        name: "extract_content",
+        arguments: { url: demoUrl },
+      });
+      console.log("[Demo] Extracted content result:", result);
+    } catch (err) {
+      console.error("[Demo] Error calling extract_content tool:", err);
+    }
+    // --- End DEMO ---
+
     await mcpClient.chatLoop();
   } finally {
     await mcpClient.cleanup();
