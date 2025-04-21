@@ -25,7 +25,7 @@ class MCPClient {
   public mcp: Client;
   private llm: OpenAI;
   private transport: StdioClientTransport | null = null;
-  private tools: Tool[] = [];
+  private tools: any[] = [];
 
   constructor() {
     this.llm = new OpenAI({
@@ -57,15 +57,18 @@ class MCPClient {
     const toolsResult = await this.mcp.listTools();
     this.tools = toolsResult.tools.map((tool) => {
       return {
-        name: tool.name,
-        description: tool.description,
-        input_schema: tool.inputSchema,
+        type: "function",
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.inputSchema, // OpenAI expects 'parameters' here
+        },
       };
     });
 
     console.log(
       "Connected to server with tools:",
-      this.tools.map(({ name }) => name)
+      this.tools.map((t: any) => t.function.name)
     );
   }
 
@@ -83,15 +86,48 @@ class MCPClient {
       model: "gpt-4o", // or another OpenAI model
       max_tokens: 1000,
       messages,
-      // tools: this.tools, // OpenAI tool calling would need to be adapted
+      tools: this.tools, // OpenAI tool calling enabled
     });
 
-    // For simplicity, just return the response text
-    const finalText = [];
-    if (response.choices && response.choices.length > 0) {
-      finalText.push(response.choices[0].message.content);
+    const choice = response.choices[0];
+
+    // Handle tool/function call if present
+    if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
+      const toolCall = choice.message.tool_calls[0];
+      const toolName = toolCall.function.name;
+      let toolArgs = {};
+      try {
+        toolArgs = JSON.parse(toolCall.function.arguments);
+      } catch (e) {
+        return `Error parsing tool arguments: ${e}`;
+      }
+      // Call the MCP tool
+      let toolResult;
+      try {
+        console.log(`making tool call: ${toolName} with args: ${JSON.stringify(toolArgs)}`);
+        toolResult = await this.mcp.callTool({ name: toolName, arguments: toolArgs });
+      } catch (e) {
+        return `Error calling tool '${toolName}': ${e}`;
+      }
+      // Send the tool result back to OpenAI for a final response
+      const followup = await this.llm.chat.completions.create({
+        model: "gpt-4o",
+        max_tokens: 1000,
+        messages: [
+          ...messages,
+          choice.message, // the function call message
+          {
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: JSON.stringify(toolResult),
+          },
+        ],
+      });
+      return followup.choices[0].message.content;
+    } else {
+      // No tool call, just return the assistant's message
+      return choice.message.content;
     }
-    return finalText.join("\n");
   }
 
   async chatLoop() {
@@ -130,21 +166,6 @@ async function main() {
   const mcpClient = new MCPClient();
   try {
     await mcpClient.connectToServer(process.argv[2]);
-
-    // --- DEMO: Call extract_content tool from server ---
-    const demoUrl = "https://example.com";
-    console.log(`\n[Demo] Calling extract_content tool with url: ${demoUrl}`);
-    try {
-      const result = await mcpClient.mcp.callTool({
-        name: "extract_content",
-        arguments: { url: demoUrl },
-      });
-      console.log("[Demo] Extracted content result:", result);
-    } catch (err) {
-      console.error("[Demo] Error calling extract_content tool:", err);
-    }
-    // --- End DEMO ---
-
     await mcpClient.chatLoop();
   } finally {
     await mcpClient.cleanup();
