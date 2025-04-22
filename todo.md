@@ -1,0 +1,1 @@
+- should allow server based or local mcp servers in mcps.json {f} {cm:2025-04-21}

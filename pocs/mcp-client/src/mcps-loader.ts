@@ -2,7 +2,8 @@ import fs from "fs/promises";
 
 export type McpServerConfig = {
   name: string;
-  path: string;
+  path?: string;
+  url?: string;
   args?: string[];
   requestOptions?: any;
 };

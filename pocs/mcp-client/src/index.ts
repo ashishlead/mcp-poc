@@ -11,6 +11,7 @@ import { Tool } from "@anthropic-ai/sdk/resources/messages/messages.mjs"; // Onl
 // mcp sdk
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 
 import dotenv from "dotenv";
 import readline from "readline/promises";
@@ -27,7 +28,7 @@ if (!OPENAI_API_KEY) {
 class MCPClient {
   public mcp: Client;
   public llm: OpenAI;
-  private transport: StdioClientTransport | null = null;
+  private transport: any = null; // Accept both StdioClientTransport and SSEClientTransport
   public tools: any[] = [];
   public name: string;
   public config: McpServerConfig;
@@ -42,21 +43,28 @@ class MCPClient {
   }
 
   async connectToServer() {
-    const serverScriptPath = this.config.path;
-    const isJs = serverScriptPath.endsWith(".js");
-    const isPy = serverScriptPath.endsWith(".py");
-    if (!isJs && !isPy) {
-      throw new Error("Server script must be a .js or .py file");
+    if (this.config.url) {
+      // Use SSE transport if url is specified
+      this.transport = new SSEClientTransport(new URL(this.config.url));
+    } else if (this.config.path) {
+      const serverScriptPath = this.config.path;
+      const isJs = serverScriptPath.endsWith(".js");
+      const isPy = serverScriptPath.endsWith(".py");
+      if (!isJs && !isPy) {
+        throw new Error("Server script must be a .js or .py file");
+      }
+      const command = isPy
+        ? process.platform === "win32"
+          ? "python"
+          : "python3"
+        : process.execPath;
+      this.transport = new StdioClientTransport({
+        command,
+        args: [serverScriptPath, ...(this.config.args || [])],
+      });
+    } else {
+      throw new Error("Either 'path' or 'url' must be specified in MCP config");
     }
-    const command = isPy
-      ? process.platform === "win32"
-        ? "python"
-        : "python3"
-      : process.execPath;
-    this.transport = new StdioClientTransport({
-      command,
-      args: [serverScriptPath, ...(this.config.args || [])],
-    });
     await this.mcp.connect(this.transport, this.config.requestOptions);
     const toolsResult = await this.mcp.listTools();
     this.tools = toolsResult.tools.map((tool) => {

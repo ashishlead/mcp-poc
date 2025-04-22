@@ -14,5 +14,12 @@
     "requestOptions": {
       "timeout": 120000
     }
+  },
+  {
+    "name": "http-mcp-server",
+    "url": "http://localhost:3000",
+    "requestOptions": {
+      "timeout": 60000
+    }
   }
 ]
