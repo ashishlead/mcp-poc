@@ -1,1 +1,3 @@
 - should allow server based or local mcp servers in mcps.json {f} {cm:2025-04-21}
+- use litellm and mlflow
+- function should have language, with default as javascript

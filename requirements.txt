@@ -1,0 +1,10 @@
+fastapi==0.110.0
+uvicorn==0.27.1
+pydantic==2.6.3
+litellm==1.30.7
+langfuse==2.6.0
+sqlalchemy==2.0.30
+asyncio==3.4.3
+python-dotenv==1.0.1
+psycopg2-binary==2.9.9
+alembic==1.13.1
