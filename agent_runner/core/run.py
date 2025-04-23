@@ -116,27 +116,65 @@ class Run:
                 conversation = step_details.get('chat', [])
             
             # Build tools array
-            tools = []
-            if 'function' in step_details:
-                for func_item in step_details['function']:
-                    func_name = func_item.get('name') if isinstance(func_item, dict) else func_item
-                    func_details = self.workspace.data.function_details.get(func_name, {})
-                    
-                    if func_details:
-                        tool = {
-                            "type": "function",
-                            "function": {
-                                "name": func_name,
-                                "description": func_details.get('description', ''),
-                                "parameters": self._convert_parameters_to_schema(func_details.get('parameters', []))
-                            }
+            tools = self._build_tools_array(step_details)
+            
+            # Call LLM recursively to handle tool calls
+            await self._call_llm_with_tools(conversation, tools, step_details, step_span)
+            
+            # Update step record in DB
+            if self.current_db_step:
+                self.current_db_step.ended_at = datetime.utcnow()
+                self.current_db_step.status = "completed"
+                self.current_db_step.time_taken_ms = int((time.time() - step_start_time) * 1000)
+                self.db.commit()
+            
+            # End the step span
+            step_span.end()
+            
+        except Exception as e:
+            # Handle error
+            if self.current_db_step:
+                self.current_db_step.ended_at = datetime.utcnow()
+                self.current_db_step.status = "failed"
+                self.current_db_step.time_taken_ms = int((time.time() - step_start_time) * 1000)
+                self.db.commit()
+            
+            step_span.end(status="error", statusMessage=str(e))
+            raise
+
+    def _build_tools_array(self, step_details):
+        """Build the tools array for LLM"""
+        tools = []
+        if 'function' in step_details:
+            for func_item in step_details['function']:
+                func_name = func_item.get('name') if isinstance(func_item, dict) else func_item
+                func_details = self.workspace.data.function_details.get(func_name, {})
+                
+                if func_details:
+                    tool = {
+                        "type": "function",
+                        "function": {
+                            "name": func_name,
+                            "description": func_details.get('description', ''),
+                            "parameters": self._convert_parameters_to_schema(func_details.get('parameters', []))
                         }
-                        tools.append(tool)
+                    }
+                    tools.append(tool)
+        return tools
+
+    async def _call_llm_with_tools(self, conversation, tools, step_details, parent_span, max_iterations=5):
+        """Call LLM with tools and handle recursive tool calls"""
+        iteration = 0
+        run_in_parallel = step_details.get('runFunctionsInParallel', False)
+        model = step_details.get('model', 'gpt-4')
+        
+        while iteration < max_iterations:
+            iteration += 1
+            
+            # Create a span for this LLM call iteration
+            llm_span = parent_span.span(name=f"LLM Call (Iteration {iteration})")
             
             # Call LLM
-            llm_span = step_span.span(name="LLM Call")
-            model = step_details.get('model', 'gpt-4')
-            
             response = await litellm.acompletion(
                 model=model,
                 messages=conversation,
@@ -186,7 +224,7 @@ class Run:
                 tool_calls = llm_response["tool_calls"]
                 
                 # Process tool calls
-                if step_details.get('runFunctionsInParallel', False):
+                if run_in_parallel:
                     # Run functions in parallel
                     tasks = []
                     for tool_call in tool_calls:
@@ -205,28 +243,17 @@ class Run:
                         
                         func_details = self.workspace.data.function_details.get(function_name, {})
                         await self._execute_function(function_name, func_details, function_args, tool_call.get("id"))
-            
-            # Update step record in DB
-            if self.current_db_step:
-                self.current_db_step.ended_at = datetime.utcnow()
-                self.current_db_step.status = "completed"
-                self.current_db_step.time_taken_ms = int((time.time() - step_start_time) * 1000)
-                self.db.commit()
-            
-            # End the step span
-            step_span.end()
-            
-        except Exception as e:
-            # Handle error
-            if self.current_db_step:
-                self.current_db_step.ended_at = datetime.utcnow()
-                self.current_db_step.status = "failed"
-                self.current_db_step.time_taken_ms = int((time.time() - step_start_time) * 1000)
-                self.db.commit()
-            
-            step_span.end(status="error", statusMessage=str(e))
-            raise
-    
+                
+                # Continue the loop to make another LLM call with the tool results
+                continue
+            else:
+                # No tool calls, we're done
+                break
+        
+        # If we've reached the maximum number of iterations, log a warning
+        if iteration >= max_iterations:
+            print(f"Warning: Reached maximum number of iterations ({max_iterations}) for step {self.current_step}")
+
     async def _execute_function(self, func_name: str, func_details: Dict, args: Dict, tool_call_id: str = None):
         """Execute a function"""
         function_start_time = time.time()
