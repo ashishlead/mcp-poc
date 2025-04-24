@@ -22,7 +22,6 @@ class Run:
     def __init__(self, workspace, kwargs: Dict, db: Optional[Session] = None):
         self.workspace = workspace
         self.kwargs = kwargs
-        self.conversation_history = []
         self.results = {}
         self.db = db
         self.db_run = None
@@ -54,13 +53,20 @@ class Run:
         first_step = self.workspace.data.steps[0]
         current_step = first_step.get('id')
         
+        # Step-scoped conversation history
+        step_conversation_history = []
+        
         # Execute steps until we reach the end
         while current_step != "-":
             self.current_step = current_step
-            await self._execute_step(current_step)
+            # Pass the current step's conversation history to _execute_step and get it back
+            step_conversation_history = await self._execute_step(current_step, step_conversation_history)
             
             # Get the next step
             step_details = self.workspace.data.step_details.get(current_step, {})
+            # Decide if we pass conversation to next step
+            if not step_details.get('passConversationToNextStep', False):
+                step_conversation_history = []
             current_step = step_details.get('nextStep', '-')
         
         # Update run record in DB
@@ -79,7 +85,7 @@ class Run:
         
         return self.results
     
-    async def _execute_step(self, step_id: str):
+    async def _execute_step(self, step_id: str, conversation_history=None):
         """Execute a single step"""
         step_start_time = time.time()
         step_details = self.workspace.data.step_details.get(step_id, {})
@@ -97,8 +103,8 @@ class Run:
         )
         
         try:
-            # Prepare conversation
-            conversation = prepare_conversation(step_details, self.conversation_history)
+            # Prepare conversation for this step
+            conversation = prepare_conversation(step_details, conversation_history)
             
             # Build tools array
             available_functions = []
@@ -126,6 +132,8 @@ class Run:
             # End the step span
             step_span.end()
             
+            # Return the updated conversation history for this step
+            return conversation
         except Exception as e:
             # Handle error
             if self.current_db_step:
@@ -186,8 +194,8 @@ class Run:
             # Get LLM response
             llm_response = response.get("choices", [{}])[0].get("message", {})
             
-            # Append response to history
-            append_assistant_response(self.conversation_history, llm_response.get("content", ""))
+            # Append full assistant message (including tool_calls) to history
+            conversation.append(llm_response)
             
             # Check for tool calls
             tool_calls = extract_tool_calls(llm_response)
@@ -206,7 +214,7 @@ class Run:
                         self.results[function_name] = result
                         
                         # Append tool result to conversation
-                        append_tool_result(self.conversation_history, call_id, function_name, result)
+                        append_tool_result(conversation, call_id, function_name, result)
                 else:
                     # Run functions sequentially
                     async for call_id, function_name, result in execute_functions_sequential(
@@ -220,7 +228,7 @@ class Run:
                         self.results[function_name] = result
                         
                         # Append tool result to conversation
-                        append_tool_result(self.conversation_history, call_id, function_name, result)
+                        append_tool_result(conversation, call_id, function_name, result)
                 
                 # Continue the loop to make another LLM call with the tool results
                 continue
