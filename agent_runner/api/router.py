@@ -83,7 +83,7 @@ async def run_workspace_async(workspace_id: int, kwargs: dict, db: Session):
     
     try:
         workspace = manager.get_workspace(workspace_id)
-        await workspace.run(**kwargs)
+        await workspace.run(db=db, **kwargs)
     except Exception as e:
         # Log the error
         print(f"Error running workspace {workspace_id}: {e}")

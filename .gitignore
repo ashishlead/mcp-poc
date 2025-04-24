@@ -66,3 +66,6 @@ package-lock.json
 /lib/
 dist/
 .env
+.venv
+__pycache__
+agent_runner.db

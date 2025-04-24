@@ -4,7 +4,7 @@ from typing import Dict, List, Any, Optional
 import litellm
 
 from langfuse import Langfuse
-from langfuse.client import AsyncClient
+from langfuse.api.client import AsyncFernLangfuse
 
 
 async def call_llm(model: str, messages: List[Dict], tools: Optional[List] = None, trace_id: Optional[str] = None, span_id: Optional[str] = None):
@@ -84,10 +84,18 @@ def convert_parameters_to_schema(parameters: List[Dict]) -> Dict:
         param_type = param.get('type')
         param_description = param.get('description', '')
         
-        properties[param_name] = {
-            "type": param_type,
-            "description": param_description
-        }
+        if param_type == "array":
+            # Default to array of strings if not specified otherwise
+            properties[param_name] = {
+                "type": "array",
+                "description": param_description,
+                "items": {"type": "string"}
+            }
+        else:
+            properties[param_name] = {
+                "type": param_type,
+                "description": param_description
+            }
         
         # Assume all parameters are required
         required.append(param_name)
@@ -99,15 +107,25 @@ def convert_parameters_to_schema(parameters: List[Dict]) -> Dict:
     }
 
 
-def extract_tool_calls(llm_response: Dict) -> List[Dict]:
-    """Extract tool calls from LLM response
-    
-    Args:
-        llm_response: The LLM response message
-        
-    Returns:
-        List of tool call objects
+def extract_tool_calls(llm_response) -> list:
     """
-    if "tool_calls" in llm_response and llm_response["tool_calls"]:
-        return llm_response["tool_calls"]
-    return []
+    Extract tool calls from LLM response (dict or object).
+    Always returns a list of dicts.
+    """
+    tool_calls = getattr(llm_response, "tool_calls", None)
+    if tool_calls is None and isinstance(llm_response, dict):
+        tool_calls = llm_response.get("tool_calls")
+    if not tool_calls:
+        return []
+    # Convert each tool_call to dict if not already
+    normalized = []
+    for call in tool_calls:
+        if isinstance(call, dict):
+            normalized.append(call)
+        elif hasattr(call, "to_dict"):
+            normalized.append(call.to_dict())
+        elif hasattr(call, "__dict__"):
+            normalized.append(vars(call))
+        else:
+            normalized.append(call)
+    return normalized

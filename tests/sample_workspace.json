@@ -1,0 +1,60 @@
+{
+  "Advanced Agent@v1#details": {
+    "steps": [
+      {"id": "1. Analyze", "name": "1. Analyze"},
+      {"id": "2. Process", "name": "2. Process"},
+      {"id": "3. Summarize", "name": "3. Summarize"}
+    ]
+  },
+  "Advanced Agent@v1@step-1. Analyze#details": {
+    "chat": [
+      {"role": "system", "content": "You are an AI assistant that analyzes text data and extracts key information."},
+      {"role": "user", "content": "Analyze the following text and extract key entities, topics, and sentiment: 'The new AI technology from OpenAI has revolutionized how developers build applications. Many users are excited about the possibilities, though some experts caution about potential risks.'"}
+    ],
+    "function": [
+      "process_text"
+    ],
+    "nextStep": "2. Process",
+    "model": "gpt-3.5-turbo",
+    "runFunctionsInParallel": false,
+    "passConversationToNextStep": true
+  },
+  "Advanced Agent@v1@step-2. Process#details": {
+    "chat": [
+      {"role": "system", "content": "You are an AI assistant that processes analyzed data and performs calculations."}
+    ],
+    "function": [
+      "calculate_statistics"
+    ],
+    "nextStep": "3. Summarize",
+    "model": "gpt-3.5-turbo",
+    "runFunctionsInParallel": false,
+    "passConversationToNextStep": true
+  },
+  "Advanced Agent@v1@step-3. Summarize#details": {
+    "chat": [
+      {"role": "system", "content": "You are an AI assistant that summarizes processed data and provides recommendations."}
+    ],
+    "function": [],
+    "nextStep": "-",
+    "model": "gpt-3.5-turbo",
+    "runFunctionsInParallel": false,
+    "passConversationToNextStep": false
+  },
+  "Advanced Agent@v1@func-process_text#details": {
+    "description": "Process text with various operations",
+    "parameters": [
+      {"type": "string", "name": "text", "description": "The text to process"},
+      {"type": "array", "name": "operations", "description": "List of operations to perform (lowercase, uppercase, tokenize, count_words, count_chars)"}
+    ],
+    "code": "def process_text(text, operations):\n    results = {}\n    \n    for operation in operations:\n        if operation == \"lowercase\":\n            results[\"lowercase\"] = text.lower()\n        elif operation == \"uppercase\":\n            results[\"uppercase\"] = text.upper()\n        elif operation == \"tokenize\":\n            results[\"tokenize\"] = text.split()\n        elif operation == \"count_words\":\n            results[\"count_words\"] = len(text.split())\n        elif operation == \"count_chars\":\n            results[\"count_chars\"] = len(text)\n    \n    return results"
+  },
+  "Advanced Agent@v1@func-calculate_statistics#details": {
+    "description": "Calculate basic statistics for a field in a list of dictionaries",
+    "parameters": [
+      {"type": "array", "name": "data", "description": "List of dictionaries containing the field"},
+      {"type": "string", "name": "field", "description": "The field to calculate statistics for"}
+    ],
+    "code": "def calculate_statistics(data, field):\n    if not data:\n        return {\"error\": \"No data provided\"}\n    \n    try:\n        values = [item.get(field, 0) for item in data if field in item]\n        \n        if not values:\n            return {\"error\": f\"Field '{field}' not found in data\"}\n        \n        return {\n            \"min\": min(values),\n            \"max\": max(values),\n            \"avg\": sum(values) / len(values),\n            \"sum\": sum(values),\n            \"count\": len(values)\n        }\n    except Exception as e:\n        return {\"error\": str(e)}"
+  }
+}

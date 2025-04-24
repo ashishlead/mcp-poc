@@ -5,6 +5,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 from langfuse import Langfuse
+from sqlalchemy.orm import Session
 
 from agent_runner.db.models import Run as DBRun, RunStep as DBRunStep, Chat as DBChat, RunFunctionCall as DBRunFunctionCall
 from agent_runner.core.llm.client import call_llm, build_tools_array, extract_tool_calls

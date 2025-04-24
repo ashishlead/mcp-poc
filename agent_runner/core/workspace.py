@@ -21,9 +21,9 @@ class Workspace:
         self.data = data
         self.db_workspace = db_workspace
     
-    async def run(self, **kwargs) -> Run:
+    async def run(self, db: Optional[Session] = None, **kwargs) -> Run:
         """Create and execute a run for this workspace"""
-        run = Run(workspace=self, kwargs=kwargs)
+        run = Run(workspace=self, kwargs=kwargs, db=db)
         await run.execute()
         return run
 
@@ -70,6 +70,13 @@ class WorkspaceManager:
     
     def create_workspace(self, name: str, version: str, json_data: Dict) -> Workspace:
         """Create a new workspace in the database"""
+        # Check if a workspace with the same name and version already exists
+        existing_workspace = self.db.query(DBWorkspace).filter_by(name=name, version=version).first()
+        if existing_workspace:
+            workspace = self.load(existing_workspace.json_data)
+            workspace.db_workspace = existing_workspace
+            return workspace
+
         db_workspace = DBWorkspace(
             name=name,
             version=version,
